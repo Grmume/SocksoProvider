@@ -1,0 +1,20 @@
+<preference-headers xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- These settings headers are only used on tablets. -->
+
+    <header
+        android:fragment="grmume.socksoprovider.SettingsActivity$ServerPreferenceFragment"
+        android:icon="@drawable/ic_info_black_24dp"
+        android:title="@string/pref_header_server" />
+
+    <header
+        android:fragment="grmume.socksoprovider.SettingsActivity$AccountPreferenceFragment"
+        android:icon="@drawable/ic_notifications_black_24dp"
+        android:title="@string/pref_header_account" />
+
+    <header
+        android:fragment="grmume.socksoprovider.SettingsActivity$CachePreferenceFragment"
+        android:icon="@drawable/ic_sync_black_24dp"
+        android:title="@string/pref_header_cache" />
+
+</preference-headers>

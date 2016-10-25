@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file:///run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/SocksoProvider.iml" filepath="/run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/SocksoProvider.iml" />
+      <module fileurl="file:///run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/app/app.iml" filepath="/run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/app/app.iml" />
+      <module fileurl="file:///run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/encore-providerlib-master/encore-providerlib-master.iml" filepath="/run/media/greg/linux-hdd/Dokumente/projects/software/android/SocksoProvider/encore-providerlib-master/encore-providerlib-master.iml" />
+    </modules>
+  </component>
+</project>

@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">SocksoProvider</string>
+    <string name="title_activity_settings">Settings</string>
+
+    <!-- Strings related to Settings -->
+
+    <!-- Example General settings -->
+    <string name="pref_header_server">Server</string>
+
+    <string name="pref_title_serveraddress">Server</string>
+    <string name="pref_description_serveraddress">Hostname of the Sockso server
+    </string>
+
+    <string name="pref_title_port">Port</string>
+    <string name="pref_default_port">4444</string>
+
+    <!-- Settings for Accountc -->
+    <string name="pref_header_account">Account</string>
+
+    <string name="pref_title_account_name">Name</string>
+
+    <string name="pref_title_account_password">Password</string>
+
+    <!-- settings for Cache -->
+    <string name="pref_header_cache">Cache</string>
+</resources>
