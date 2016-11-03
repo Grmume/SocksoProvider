@@ -4,7 +4,7 @@ import java.net.HttpCookie;
 import java.util.List;
 
 /**
- * Created by greg on 14.10.16.
+ * Created by grume on 14.10.16.
  */
 
 public interface ISocksoConnectionParams{
@@ -18,5 +18,7 @@ public interface ISocksoConnectionParams{
     String getAccountName();
 
     String getAccountPassword();
+
+    long getTimestampSeconds();
 
 }

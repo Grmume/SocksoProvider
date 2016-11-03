@@ -66,7 +66,6 @@ public class SocksoService extends Service {
 
     private List<Song> songs;
 
-    private final CookieManager cookies = new CookieManager();
 
     private AudioClientSocket socket;
 
@@ -78,9 +77,12 @@ public class SocksoService extends Service {
 
     private final List<IProviderCallback> mCallbacks;
 
+    private long loginTimestamp;
+
     private ISocksoConnectionParams connParams = new ISocksoConnectionParams() {
         @Override
         public List<HttpCookie> getCookies() {
+            if(loginResult == null) return null;
             return loginResult.getCookies();
         }
 
@@ -107,11 +109,16 @@ public class SocksoService extends Service {
             SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(SocksoService.this);
             return pref.getString("accountPassword", null);
         }
+
+        @Override
+        public long getTimestampSeconds() {
+            return loginTimestamp;
+        }
     };
 
     private final CachedPlayer player = new CachedPlayer(connParams);
 
-    private final CachedSocksoLibraryProvider libProvider = new CachedSocksoLibraryProvider(connParams, mIdentifier, player);
+    private final CachedSocksoLibraryProvider libProvider = new CachedSocksoLibraryProvider(connParams, player);
 
 
     /**
@@ -180,6 +187,7 @@ public class SocksoService extends Service {
                 }catch(Exception e)
                 {
                     Log.d(TAG, "Could not send logindata:"+e.toString()+" Message:"+e.getMessage());
+                    res.setSuccess(false);
                 }
 
                 Log.d(TAG, "Logindata sent. postData:"+postData);
@@ -200,6 +208,7 @@ public class SocksoService extends Service {
                 if (cookiesHeader != null) {
                     res.setSuccess(true);
                     res.setCookies(new ArrayList<HttpCookie>());
+                    loginTimestamp = System.currentTimeMillis()/1000;
 
                     for (String cookie : cookiesHeader) {
                         HttpCookie c = HttpCookie.parse(cookie).get(0);
@@ -215,9 +224,11 @@ public class SocksoService extends Service {
 
             } catch (MalformedURLException e) {
                 Log.d(TAG, "URL is malformed.");
+                res.setSuccess(false);
                 return res;
             } catch (IOException e) {
                 Log.d(TAG, "IOException:"+e.getMessage());
+                res.setSuccess(false);
                 return res;
             }
 
@@ -238,7 +249,7 @@ public class SocksoService extends Service {
             try {
                 is = new BufferedInputStream(connection.getInputStream());
                 BufferedReader br = new BufferedReader(new InputStreamReader(is));
-                String inputLine = "";
+                String inputLine;
                 while ((inputLine = br.readLine()) != null) {
                     sb.append(inputLine);
                 }
@@ -261,7 +272,7 @@ public class SocksoService extends Service {
 
             return result;
         }
-    };
+    }
 
     private class GetAlbumsTask extends AsyncTask<CachedSocksoLibraryProvider, Void, List<Album>> {
 
@@ -332,7 +343,9 @@ public class SocksoService extends Service {
 
         @Override
         public void setIdentifier(ProviderIdentifier identifier) throws RemoteException {
+            Log.d(TAG, "Identifier set to "+identifier);
             mIdentifier = identifier;
+            libProvider.setIdentifier(identifier);
         }
 
         @Override
@@ -419,9 +432,45 @@ public class SocksoService extends Service {
 
         }
 
+        @RequiresApi(api = Build.VERSION_CODES.KITKAT)
         @Override
         public boolean isAuthenticated() throws RemoteException {
-            return isAuthenticated;
+                Log.d(TAG, "isAuthenticated called");
+                if(connParams != null) {
+                    Log.d(TAG, "connParams is set");
+                    if(connParams.getCookies() == null) return false;
+                    Log.d(TAG, "cookies is set");
+                    if(connParams.getCookies().size() == 0) return false;
+                    Log.d(TAG, "cookies size is greater than 0");
+
+                    // Check if the last login is more than half an hour in the past
+                    if(((System.currentTimeMillis()/1000L) - connParams.getTimestampSeconds()) > 1800)
+                    {
+                        // Login again, return false
+                        return false;
+                    }
+                    else {
+                        Log.d(TAG, "Comparing settings to connParams");
+                        Log.d(TAG, "connParams.serverAddress="+connParams.getServerAddress());
+                        Log.d(TAG, "connParams.getServerPort="+connParams.getServerPort());
+                        Log.d(TAG, "connParams.getAccountName="+connParams.getAccountName());
+                        Log.d(TAG, "connParams.getAccountPassword="+connParams.getAccountPassword());
+                        // Compare the connection parameters to the one in the preferences
+                        SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(SocksoService.this);
+                        if (connParams.getServerAddress().equalsIgnoreCase(pref.getString("serverAddress", null)) &&
+                                connParams.getServerPort().equalsIgnoreCase(pref.getString("serverPort", null)) &&
+                                connParams.getAccountName().equalsIgnoreCase(pref.getString("accountName", null)) &&
+                                connParams.getAccountPassword().equalsIgnoreCase(pref.getString("accountPassword", null))) {
+                            // Settings match
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
+                }else {
+                    Log.d(TAG, "connParams is NOT set");
+                    return false;
+                }
         }
 
         @Override
