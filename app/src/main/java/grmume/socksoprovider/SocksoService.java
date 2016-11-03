@@ -564,6 +564,7 @@ public class SocksoService extends Service {
             socket = new AudioClientSocket();
             try {
                 socket.connect(socketName);
+                player.setAudioSocket(socket);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -581,7 +582,8 @@ public class SocksoService extends Service {
 
         @Override
         public boolean playSong(String ref) throws RemoteException {
-            return false;
+            player.playSong(ref);
+            return true;
         }
 
         @Override

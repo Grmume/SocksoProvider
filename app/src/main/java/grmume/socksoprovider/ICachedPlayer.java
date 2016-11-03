@@ -8,9 +8,11 @@ import com.fastbootmobile.encore.providers.AudioSocket;
 
 public interface ICachedPlayer {
 
+    void setAudioSocket(AudioSocket socket);
+
     int getSongOfflineStatus(String ref);
 
-    void playSong(String ref, AudioSocket socket);
+    void playSong(String ref);
 
     void prefetchSong(String ref);
 

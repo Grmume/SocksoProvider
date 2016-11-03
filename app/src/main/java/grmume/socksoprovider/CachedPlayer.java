@@ -1,7 +1,20 @@
 package grmume.socksoprovider;
 
+import android.content.res.AssetFileDescriptor;
+import android.media.MediaCodec;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.support.annotation.RequiresApi;
+import android.util.Log;
+
 import com.fastbootmobile.encore.model.BoundEntity;
 import com.fastbootmobile.encore.providers.AudioSocket;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Created by greg on 18.10.16.
@@ -9,11 +22,47 @@ import com.fastbootmobile.encore.providers.AudioSocket;
 
 public class CachedPlayer implements ICachedPlayer {
 
+    private static final String TAG = "SocksoPluginPlayer";
+
     private ISocksoConnectionParams connParams;
+
+    private AudioSocket socket;
+
+    private IFetchSongCallback cb = new IFetchSongCallback() {
+        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN)
+        @Override
+        public void handleChunk(List<Byte> chunk) {
+//            AssetFileDescriptor sampleFD = null;//getResources().openRawResourceFd(R.raw.sample);
+//
+//            MediaExtractor extractor;
+//            MediaCodec codec;
+//            ByteBuffer[] codecInputBuffers;
+//            ByteBuffer[] codecOutputBuffers;
+//
+//            extractor = new MediaExtractor();
+//            try {
+//                extractor.setDataSource(sampleFD.getFileDescriptor(), sampleFD.getStartOffset(), sampleFD.getLength());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//
+//            Log.d(TAG, String.format("TRACKS #: %d", extractor.getTrackCount()));
+//            MediaFormat format = extractor.getTrackFormat(0);
+//            String mime = format.getString(MediaFormat.KEY_MIME);
+//            Log.d(TAG, String.format("MIME TYPE: %s", mime));
+
+            Log.d(TAG, "Received "+chunk.size()+" bytes from server");
+        }
+    };
 
     public CachedPlayer(ISocksoConnectionParams params)
     {
         this.connParams = params;
+    }
+
+    @Override
+    public void setAudioSocket(AudioSocket socket) {
+        this.socket = socket;
     }
 
     @Override
@@ -47,9 +96,13 @@ public class CachedPlayer implements ICachedPlayer {
     }
 
     @Override
-    public void playSong(String ref, AudioSocket socket) {
-
+    public void playSong(String ref) {
+        Log.d(TAG, "Playing song "+ref);
+        FetchSongTask task = new FetchSongTask();
+        task.execute(new FetchSongParams(connParams, Reference.idFromRef(ref), cb));
+        while(task.getStatus()!= AsyncTask.Status.FINISHED) ;
     }
+
 
     @Override
     public void prefetchSong(String ref) {
