@@ -188,6 +188,7 @@ public class SocksoService extends Service {
                 {
                     Log.d(TAG, "Could not send logindata:"+e.toString()+" Message:"+e.getMessage());
                     res.setSuccess(false);
+                    return res;
                 }
 
                 Log.d(TAG, "Logindata sent. postData:"+postData);
