@@ -1,5 +1,6 @@
 package grmume.socksoprovider;
 
+import android.annotation.TargetApi;
 import android.content.res.AssetFileDescriptor;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
@@ -14,6 +15,7 @@ import com.fastbootmobile.encore.providers.AudioSocket;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,34 +26,142 @@ public class CachedPlayer implements ICachedPlayer {
 
     private static final String TAG = "SocksoPluginPlayer";
 
+    private String currentMimeType;
+
+    private String currentFilename;
+
+    private int currentContentLength;
+
+    private final List<Byte> currentBuffer = new ArrayList<>();
+
+    private MediaFormat currentFormat;
+
+    private MediaCodec currentCodec;
+
+    private final List<Short> currentPcmBuffer = new ArrayList<>();
+
+    private long currentUs;
+
+    private long currentLength;
+
     private ISocksoConnectionParams connParams;
 
     private AudioSocket socket;
 
+    final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
+    public static String byteToHex(Byte b) {
+        int v = b.byteValue() & 0xFF;
+        return Character.toString(hexArray[v >>> 4]) + Character.toString(hexArray[v & 0x0F]);
+    }
+
     private IFetchSongCallback cb = new IFetchSongCallback() {
-        @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN)
+        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
         @Override
         public void handleChunk(List<Byte> chunk) {
-//            AssetFileDescriptor sampleFD = null;//getResources().openRawResourceFd(R.raw.sample);
-//
-//            MediaExtractor extractor;
-//            MediaCodec codec;
-//            ByteBuffer[] codecInputBuffers;
-//            ByteBuffer[] codecOutputBuffers;
-//
-//            extractor = new MediaExtractor();
-//            try {
-//                extractor.setDataSource(sampleFD.getFileDescriptor(), sampleFD.getStartOffset(), sampleFD.getLength());
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//
-//            Log.d(TAG, String.format("TRACKS #: %d", extractor.getTrackCount()));
-//            MediaFormat format = extractor.getTrackFormat(0);
-//            String mime = format.getString(MediaFormat.KEY_MIME);
-//            Log.d(TAG, String.format("MIME TYPE: %s", mime));
 
             Log.d(TAG, "Received "+chunk.size()+" bytes from server");
+
+            if(currentFormat == null)
+            {
+                Log.d(TAG, "CurrentFormat is null. Setting mimeType to "+currentMimeType);
+                // This is the first chunk.
+                // TODO Extract the currentFormat using MediaExtractor
+                currentFormat = MediaFormat.createAudioFormat(currentMimeType, 320, 2);
+                try {
+                    currentCodec = MediaCodec.createDecoderByType(currentMimeType);
+                    socket.writeFormatData(2, 320);
+                } catch (IOException e) {
+                    Log.e(TAG, e.getMessage());
+                }
+                currentCodec.configure(currentFormat, null /* surface */, null /* crypto */, 0 /* flags */);
+            }
+
+            ByteBuffer codecInputBuffer;
+            ByteBuffer codecOutputBuffer;
+            Log.d(TAG, "Starting codec");
+            currentCodec.start();
+
+            int inputBufIndex = currentCodec.dequeueInputBuffer(-1);
+            codecInputBuffer = currentCodec.getInputBuffer(inputBufIndex);
+
+            if (codecInputBuffer != null) {
+                Log.d(TAG, "Got inputbuffer");
+
+                String bytesInHex = "";
+
+                for (Byte b : chunk) {
+                    codecInputBuffer.put(b);
+                    bytesInHex+=byteToHex(b);
+                }
+
+                Log.d(TAG, "========== BYTES =========");
+                Log.d(TAG, bytesInHex);
+                Log.d(TAG, "========== BYTES =========");
+
+                Log.d(TAG, "Inputbuffer:"+codecInputBuffer.toString());
+
+                currentCodec.queueInputBuffer(inputBufIndex,
+                        0, //offset
+                        chunk.size(),
+                        currentUs,
+                        (currentLength == currentContentLength) ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                Log.d(TAG, "queued input buffer");
+
+                // 320kbit!! (and seconds to microseconds)(1024/8 0=> 128)
+                currentUs += (chunk.size() * 1000000) / (320 * 128);
+
+                MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+                int outputBufIndex = 0;
+                Log.d(TAG, "Created bufferInfo");
+                try {
+                    outputBufIndex = currentCodec.dequeueOutputBuffer(bufferInfo, -1);
+
+                }catch(MediaCodec.CodecException e)
+                {
+                    Log.e(TAG, "CodecException:"+e.getDiagnosticInfo());
+                }catch(IllegalStateException e)
+                {
+                    Log.e(TAG, "IllegalStateException: "+e.getMessage());
+                }
+
+                Log.d(TAG, "outputBufIndex is "+outputBufIndex);
+
+                codecOutputBuffer = currentCodec.getOutputBuffer(outputBufIndex);
+
+                Log.d(TAG, "Got outputBuffer. bufferIndex is "+outputBufIndex);
+
+                final byte[] pcmChunk = new byte[bufferInfo.size];
+                codecOutputBuffer.get(pcmChunk); // Read the buffer all at once
+                codecOutputBuffer.clear();
+
+                currentCodec.releaseOutputBuffer(outputBufIndex, false /* render */);
+
+                try {
+                    Log.d(TAG, "Writing to socket");
+                    socket.writeAudioData(pcmChunk, 0, pcmChunk.length);
+                } catch (IOException e) {
+                    Log.e(TAG, e.getMessage());
+                }
+
+            }
+
+            currentCodec.stop();
+            currentCodec.release();
+
+        }
+
+        @Override
+        public void handleStartOfStream(String mimeDatatype, String filename, int length) {
+            Log.d(TAG, "Received start of stream.");
+            currentUs = 0;
+            currentLength = 0;
+            currentMimeType = mimeDatatype;
+            currentFilename = filename;
+            currentContentLength = length;
+            currentFormat = null;
+            currentCodec = null;
+            currentBuffer.clear();
+            currentPcmBuffer.clear();
         }
     };
 
