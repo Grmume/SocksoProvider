@@ -1,22 +1,15 @@
 package grmume.socksoprovider;
 
-import android.annotation.TargetApi;
-import android.content.res.AssetFileDescriptor;
-import android.media.MediaCodec;
-import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.os.AsyncTask;
-import android.os.Build;
-import android.support.annotation.RequiresApi;
 import android.util.Log;
 
 import com.fastbootmobile.encore.model.BoundEntity;
-import com.fastbootmobile.encore.providers.AudioSocket;
+import com.fastbootmobile.encore.providers.AudioClientSocket;
 
 import java.io.IOException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by greg on 18.10.16.
@@ -26,152 +19,103 @@ public class CachedPlayer implements ICachedPlayer {
 
     private static final String TAG = "SocksoPluginPlayer";
 
-    private String currentMimeType;
+    // 3 seconds buffer
+    private final int bufferSize = 44000*20;
 
-    private String currentFilename;
+    // Play if 1 second is buffered
+    private final int bufferThreshold = 1000;
 
-    private int currentContentLength;
+    private ByteBuffer pcmBuffer;
 
-    private final List<Byte> currentBuffer = new ArrayList<>();
-
-    private MediaFormat currentFormat;
-
-    private MediaCodec currentCodec;
-
-    private final List<Short> currentPcmBuffer = new ArrayList<>();
-
-    private long currentUs;
-
-    private long currentLength;
+    private ByteBuffer currentEncodedBuffer;
 
     private ISocksoConnectionParams connParams;
 
-    private AudioSocket socket;
+    private AudioClientSocket socket;
+
+    private IPlayerCallback playerCallback;
+
+    private boolean bufferingFinished;
+
+    private int counter;
 
     final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
+    private IFetchSongCallback cb = new IFetchSongCallback() {
+        @Override
+        public void handleEncodedChunk(byte[] chunk) {
+
+            currentEncodedBuffer.put(chunk);
+        }
+
+        @Override
+        public void handlePcmChunk(byte[] chunk) {
+            boolean justStarted = false;
+            pcmBuffer.put(chunk);
+
+            if(!bufferingFinished)
+            {
+                Log.d(TAG, "Buffering. Buffer position="+pcmBuffer.position());
+                if(pcmBuffer.position() >= bufferThreshold)
+                {
+                    Log.d(TAG, "Starting playback");
+                    bufferingFinished = true;
+                    justStarted = true;
+                }
+            }
+
+            if(bufferingFinished)
+            {
+
+                pcmBuffer.flip();
+                byte[] pcm = new byte[pcmBuffer.remaining()];
+                try {
+                    pcmBuffer.get(pcm);
+                }catch(BufferUnderflowException e)
+                {
+                    Log.e(TAG,"Buffer underflow");
+                }
+                pcmBuffer.clear();
+
+                try {
+                    socket.writeAudioData(pcm,0,pcm.length);
+                    if(justStarted)
+                    {
+                        playerCallback.onPlaybackStarted();
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, e.getMessage());
+                }
+                if (counter < 10) {
+                    Log.d(TAG, "Sent " + pcm.length + " bytes to socket.");
+                    counter++;
+                }
+            }
+        }
+
+        @Override
+        public void setMediaFormat(MediaFormat format) {
+            try {
+                socket.writeFormatData(format.getInteger(MediaFormat.KEY_CHANNEL_COUNT),format.getInteger(MediaFormat.KEY_SAMPLE_RATE));
+            } catch (IOException e) {
+                Log.e(TAG,"IOException:"+e.getMessage());
+            }
+        }
+    };
+
     public static String byteToHex(Byte b) {
         int v = b.byteValue() & 0xFF;
         return Character.toString(hexArray[v >>> 4]) + Character.toString(hexArray[v & 0x0F]);
     }
 
-    private IFetchSongCallback cb = new IFetchSongCallback() {
-        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-        @Override
-        public void handleChunk(List<Byte> chunk) {
-
-            Log.d(TAG, "Received "+chunk.size()+" bytes from server");
-
-            if(currentFormat == null)
-            {
-                Log.d(TAG, "CurrentFormat is null. Setting mimeType to "+currentMimeType);
-                // This is the first chunk.
-                // TODO Extract the currentFormat using MediaExtractor
-                currentFormat = MediaFormat.createAudioFormat(currentMimeType, 320, 2);
-                try {
-                    currentCodec = MediaCodec.createDecoderByType(currentMimeType);
-                    socket.writeFormatData(2, 320);
-                } catch (IOException e) {
-                    Log.e(TAG, e.getMessage());
-                }
-                currentCodec.configure(currentFormat, null /* surface */, null /* crypto */, 0 /* flags */);
-            }
-
-            ByteBuffer codecInputBuffer;
-            ByteBuffer codecOutputBuffer;
-            Log.d(TAG, "Starting codec");
-            currentCodec.start();
-
-            int inputBufIndex = currentCodec.dequeueInputBuffer(-1);
-            codecInputBuffer = currentCodec.getInputBuffer(inputBufIndex);
-
-            if (codecInputBuffer != null) {
-                Log.d(TAG, "Got inputbuffer");
-
-                String bytesInHex = "";
-
-                for (Byte b : chunk) {
-                    codecInputBuffer.put(b);
-                    bytesInHex+=byteToHex(b);
-                }
-
-                Log.d(TAG, "========== BYTES =========");
-                Log.d(TAG, bytesInHex);
-                Log.d(TAG, "========== BYTES =========");
-
-                Log.d(TAG, "Inputbuffer:"+codecInputBuffer.toString());
-
-                currentCodec.queueInputBuffer(inputBufIndex,
-                        0, //offset
-                        chunk.size(),
-                        currentUs,
-                        (currentLength == currentContentLength) ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
-                Log.d(TAG, "queued input buffer");
-
-                // 320kbit!! (and seconds to microseconds)(1024/8 0=> 128)
-                currentUs += (chunk.size() * 1000000) / (320 * 128);
-
-                MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-                int outputBufIndex = 0;
-                Log.d(TAG, "Created bufferInfo");
-                try {
-                    outputBufIndex = currentCodec.dequeueOutputBuffer(bufferInfo, -1);
-
-                }catch(MediaCodec.CodecException e)
-                {
-                    Log.e(TAG, "CodecException:"+e.getDiagnosticInfo());
-                }catch(IllegalStateException e)
-                {
-                    Log.e(TAG, "IllegalStateException: "+e.getMessage());
-                }
-
-                Log.d(TAG, "outputBufIndex is "+outputBufIndex);
-
-                codecOutputBuffer = currentCodec.getOutputBuffer(outputBufIndex);
-
-                Log.d(TAG, "Got outputBuffer. bufferIndex is "+outputBufIndex);
-
-                final byte[] pcmChunk = new byte[bufferInfo.size];
-                codecOutputBuffer.get(pcmChunk); // Read the buffer all at once
-                codecOutputBuffer.clear();
-
-                currentCodec.releaseOutputBuffer(outputBufIndex, false /* render */);
-
-                try {
-                    Log.d(TAG, "Writing to socket");
-                    socket.writeAudioData(pcmChunk, 0, pcmChunk.length);
-                } catch (IOException e) {
-                    Log.e(TAG, e.getMessage());
-                }
-
-            }
-
-            currentCodec.stop();
-            currentCodec.release();
-
-        }
-
-        @Override
-        public void handleStartOfStream(String mimeDatatype, String filename, int length) {
-            Log.d(TAG, "Received start of stream.");
-            currentUs = 0;
-            currentLength = 0;
-            currentMimeType = mimeDatatype;
-            currentFilename = filename;
-            currentContentLength = length;
-            currentFormat = null;
-            currentCodec = null;
-            currentBuffer.clear();
-            currentPcmBuffer.clear();
-        }
-    };
-
-    public CachedPlayer(ISocksoConnectionParams params)
+    public CachedPlayer(ISocksoConnectionParams params, IPlayerCallback playerCallback)
     {
         this.connParams = params;
+        this.playerCallback = playerCallback;
     }
 
     @Override
-    public void setAudioSocket(AudioSocket socket) {
+    public void setAudioSocket(AudioClientSocket socket) {
         this.socket = socket;
     }
 
@@ -207,10 +151,24 @@ public class CachedPlayer implements ICachedPlayer {
 
     @Override
     public void playSong(String ref) {
+
+        counter = 0;
+
+        pcmBuffer = ByteBuffer.allocateDirect(bufferSize);
+
+        // 15 Minutes at 320kbit/s:
+        currentEncodedBuffer = ByteBuffer.allocateDirect(15*60*320*256);
+
+        bufferingFinished = false;
+
+
         Log.d(TAG, "Playing song "+ref);
-        FetchSongTask task = new FetchSongTask();
+        FetchSongTaskExtractor task = new FetchSongTaskExtractor();
         task.execute(new FetchSongParams(connParams, Reference.idFromRef(ref), cb));
-        while(task.getStatus()!= AsyncTask.Status.FINISHED) ;
+        //while(task.getStatus()!= AsyncTask.Status.FINISHED) ;
+
+
+
     }
 
 

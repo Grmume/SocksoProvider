@@ -1,5 +1,6 @@
 package grmume.socksoprovider;
 
+import com.fastbootmobile.encore.providers.AudioClientSocket;
 import com.fastbootmobile.encore.providers.AudioSocket;
 
 /**
@@ -8,7 +9,7 @@ import com.fastbootmobile.encore.providers.AudioSocket;
 
 public interface ICachedPlayer {
 
-    void setAudioSocket(AudioSocket socket);
+    void setAudioSocket(AudioClientSocket socket);
 
     int getSongOfflineStatus(String ref);
 

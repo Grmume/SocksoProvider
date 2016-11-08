@@ -79,6 +79,21 @@ public class SocksoService extends Service {
 
     private long loginTimestamp;
 
+    private IPlayerCallback playerCallback = new IPlayerCallback() {
+        @Override
+        public void onPlaybackStarted() {
+            synchronized(mCallbacks) {
+                for (IProviderCallback c : mCallbacks) {
+                    try {
+                        c.onSongPlaying(mIdentifier);
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    };
+
     private ISocksoConnectionParams connParams = new ISocksoConnectionParams() {
         @Override
         public List<HttpCookie> getCookies() {
@@ -116,7 +131,7 @@ public class SocksoService extends Service {
         }
     };
 
-    private final CachedPlayer player = new CachedPlayer(connParams);
+    private final CachedPlayer player = new CachedPlayer(connParams, playerCallback);
 
     private final CachedSocksoLibraryProvider libProvider = new CachedSocksoLibraryProvider(connParams, player);
 
