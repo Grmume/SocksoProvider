@@ -1,7 +1,7 @@
 # SocksoProvider
 Sockso-Provider for the Encore Mediaplayer
 
-This is a prototype for a music provider for the android encore mediaplayer. It is still a prototype and no usable in the current state.
+This is a prototype for a music provider for the android encore mediaplayer. It is still a prototype and not usable in the current state.
 
 Todo:
   - Async data fetching  
